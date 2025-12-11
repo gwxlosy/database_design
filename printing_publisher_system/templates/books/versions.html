@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>书籍版本 - {{ book['书籍名称'] }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+<header class="navbar">
+    <div class="navbar-brand">印刷出版商数据库管理系统</div>
+    <nav class="navbar-links">
+        <a href="{{ url_for('index') }}">首页</a>
+        <a href="{{ url_for('books_list') }}" class="active">书籍管理</a>
+        <a href="{{ url_for('list_tasks') }}">印刷任务</a>
+        <a href="{{ url_for('inventory_overview') }}">库存管理</a>
+        <a href="{{ url_for('materials_list') }}">材料/供应商</a>
+        <a href="{{ url_for('employees_list') }}">人员管理</a>
+        {% if current_user %}
+            <a href="{{ url_for('change_password') }}">修改密码</a>
+            <span style="margin-left: 1rem; color: #ecf0f1;">{{ current_user.username }} ({{ current_user.position }})</span>
+            <a href="{{ url_for('logout') }}">登出</a>
+        {% else %}
+            <a href="{{ url_for('login') }}">登录</a>
+        {% endif %}
+    </nav>
+</header>
+<main class="container">
+    <div class="page-header">
+        <h1>书籍版本：{{ book['书籍名称'] }}</h1>
+        <a href="{{ url_for('books_list') }}" class="btn">返回书籍列表</a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="messages">
+                {% for category, message in messages %}
+                    <div class="alert {{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <div class="card" style="margin-bottom: 16px;">
+        <p><strong>书籍ID：</strong>{{ book['书籍id'] }}</p>
+        <p><strong>书籍名称：</strong>{{ book['书籍名称'] }}</p>
+        <p><strong>作者：</strong>{{ book['作者'] }}</p>
+    </div>
+
+    {% if is_editor_or_admin %}
+    <div class="card" style="max-width: 640px; margin-bottom: 16px;">
+        <h3>新增版本</h3>
+        <form method="post" class="form" action="{{ url_for('book_versions_new', book_id=book['书籍id']) }}">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <div class="form-group">
+                <label for="version_desc">版本描述</label>
+                <input id="version_desc" name="version_desc" required placeholder="例如：第一版 / 精装版">
+            </div>
+            <div class="form-group">
+                <label for="isbn">ISBN（必填）</label>
+                <input id="isbn" name="isbn" required placeholder="国际标准书号">
+            </div>
+            <div class="form-group">
+                <label for="format">开本</label>
+                <input id="format" name="format" placeholder="例如：16开 / 32开">
+            </div>
+            <div class="form-group">
+                <label for="pages">页数</label>
+                <input id="pages" name="pages" type="number" min="1" placeholder="页数（可选）">
+            </div>
+            <div class="form-group">
+                <label for="created_date">版本创建日期</label>
+                <input id="created_date" name="created_date" type="date" value="{{ default_created_date }}">
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn primary">保存版本</button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+
+    {% if versions and versions|length > 0 %}
+        <table class="table">
+            <thead>
+            <tr>
+                <th>版本ID</th>
+                <th>ISBN</th>
+                <th>开本</th>
+                <th>页数</th>
+                <th>版本描述</th>
+                <th>版本创建日期</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for v in versions %}
+                <tr>
+                    <td>{{ v.get('书籍版本id') or v.get('版本id') }}</td>
+                    <td>{{ v.get('国际标准书号') }}</td>
+                    <td>{{ v.get('开本') }}</td>
+                    <td>{{ v.get('页数') }}</td>
+                    <td>{{ v.get('版本描述') }}</td>
+                    <td>{{ v.get('版本创建日期') or v.get('创建时间') }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>暂无版本信息。</p>
+    {% endif %}
+</main>
+</body>
+</html>
+

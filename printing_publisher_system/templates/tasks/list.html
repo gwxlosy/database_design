@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>印刷任务列表 - 印刷出版商管理系统</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header class="navbar">
+        <div class="navbar-brand">印刷出版商数据库管理系统</div>
+        <nav class="navbar-links">
+            <a href="{{ url_for('index') }}">首页</a>
+            <a href="{{ url_for('list_tasks') }}">印刷任务</a>
+            <a href="{{ url_for('inventory_overview') }}">库存管理</a>
+        </nav>
+    </header>
+
+    <main class="container">
+        <div class="page-header">
+            <h1>印刷任务列表</h1>
+            <a href="{{ url_for('new_task') }}" class="btn primary">新建任务</a>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="messages">
+                    {% for category, message in messages %}
+                        <div class="alert {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <form method="get" class="form" style="margin: 12px 0; display:flex; gap:12px; align-items:center;">
+            <label for="status">状态筛选：</label>
+            <select name="status" id="status">
+                <option value="" {% if not status %}selected{% endif %}>全部</option>
+                <option value="待开始" {% if status=='待开始' %}selected{% endif %}>待开始</option>
+                <option value="进行中" {% if status=='进行中' %}selected{% endif %}>进行中</option>
+                <option value="已完成" {% if status=='已完成' %}selected{% endif %}>已完成</option>
+                <option value="已取消" {% if status=='已取消' %}selected{% endif %}>已取消</option>
+            </select>
+            <label for="page_size">每页：</label>
+            <input type="number" name="page_size" id="page_size" value="{{ page_data['page_size'] if page_data else 10 }}" min="1" max="200" style="width:80px;">
+            <button type="submit" class="btn">应用</button>
+        </form>
+
+        {% set items = page_data['items'] if page_data else [] %}
+        {% if items and items|length > 0 %}
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>任务ID</th>
+                        <th>员工ID</th>
+                        <th>书籍ID</th>
+                        <th>印刷数量</th>
+                        <th>预计完成日期</th>
+                        <th>任务状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task in items %}
+                        <tr>
+                            <td>{{ task['印刷任务id'] }}</td>
+                            <td>{{ task['员工id'] }}</td>
+                            <td>{{ task['书籍id'] }}</td>
+                            <td>{{ task['印刷数量'] }}</td>
+                            <td>{{ task['预计完成日期'] }}</td>
+                            <td>{{ task['任务状态'] }}</td>
+                            <td>
+                                <a class="btn" href="{{ url_for('task_requirements', task_id=task['印刷任务id']) }}">需求明细</a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            {% set total = page_data['total'] %}
+            {% set page = page_data['page'] %}
+            {% set page_size = page_data['page_size'] %}
+            {% set total_pages = (total + page_size - 1) // page_size %}
+
+            <div class="pagination" style="margin-top:12px; display:flex; gap:8px; align-items:center;">
+                <span>第 {{ page }} / {{ total_pages }} 页（共 {{ total }} 条）</span>
+                {% if page > 1 %}
+                    <a class="btn" href="{{ url_for('list_tasks', page=1, page_size=page_size, status=status) }}">首页</a>
+                    <a class="btn" href="{{ url_for('list_tasks', page=page-1, page_size=page_size, status=status) }}">上一页</a>
+                {% endif %}
+                {% if page < total_pages %}
+                    <a class="btn" href="{{ url_for('list_tasks', page=page+1, page_size=page_size, status=status) }}">下一页</a>
+                    <a class="btn" href="{{ url_for('list_tasks', page=total_pages, page_size=page_size, status=status) }}">末页</a>
+                {% endif %}
+            </div>
+        {% else %}
+            <p>暂无数据，点击右上角“新建任务”开始创建。</p>
+        {% endif %}
+    </main>
+</body>
+</html>
+
+
+
+
+

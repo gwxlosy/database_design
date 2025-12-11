@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>采购管理 - 印刷出版商管理系统</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+<header class="navbar">
+    <div class="navbar-brand">印刷出版商数据库管理系统</div>
+    <nav class="navbar-links">
+        <a href="{{ url_for('index') }}">首页</a>
+        <a href="{{ url_for('materials_list') }}">材料/供应商</a>
+        <a href="{{ url_for('purchases_list') }}">采购管理</a>
+    </nav>
+</header>
+
+<main class="container">
+    <div class="page-header">
+        <h1>采购记录</h1>
+        <a href="{{ url_for('purchases_new') }}" class="btn primary">新建采购</a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="messages">
+          {% for category, message in messages %}
+            <div class="alert {{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <form method="get" class="form" style="margin: 12px 0; display:flex; gap:12px; align-items:center; flex-wrap: wrap;">
+        <label for="status">状态：</label>
+        <select name="status" id="status">
+            <option value="" {% if not status %}selected{% endif %}>全部</option>
+            <option value="待采购" {% if status=='待采购' %}selected{% endif %}>待采购</option>
+            <option value="已收货" {% if status=='已收货' %}selected{% endif %}>已收货</option>
+        </select>
+        <label for="task_id">任务ID：</label>
+        <input type="number" name="task_id" id="task_id" value="{{ task_id or '' }}" style="width:120px;">
+        <label for="page_size">每页：</label>
+        <input type="number" name="page_size" id="page_size" value="{{ page_data['page_size'] if page_data else 10 }}" min="1" max="200" style="width:80px;">
+        <button type="submit" class="btn">查询</button>
+    </form>
+
+    {% set items = page_data['items'] if page_data else [] %}
+    {% if items and items|length > 0 %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>采购ID</th>
+                    <th>任务ID</th>
+                    <th>材料</th>
+                    <th>供应商</th>
+                    <th>采购数量</th>
+                    <th>单价</th>
+                    <th>总成本</th>
+                    <th>状态</th>
+                    <th>采购日期</th>
+                    <th>收货日期</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in items %}
+                <tr>
+                    <td>{{ row['采购记录id'] }}</td>
+                    <td>{{ row['印刷任务id'] }}</td>
+                    <td>{{ row.get('关联_材料名称') or '-' }}</td>
+                    <td>{{ row.get('关联_供应商名称') or '-' }}</td>
+                    <td>{{ row['采购数量'] }}</td>
+                    <td>{{ row.get('关联_单价') if row.get('关联_单价') is not none else '-' }}</td>
+                    <td>{{ row['总成本'] }}</td>
+                    <td>{{ row['采购状态'] }}</td>
+                    <td>{{ row.get('采购日期') or '-' }}</td>
+                    <td>{{ row.get('材料收货日期') or '-' }}</td>
+                    <td style="min-width: 260px;">
+                        {% if row['采购状态'] != '已收货' and row['采购状态'] != '已取消' %}
+                        <form method="post" action="{{ url_for('purchases_receive', purchase_id=row['采购记录id']) }}" style="display:inline-flex; gap:6px; align-items:center; flex-wrap: wrap; margin-top:6px;">
+                            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+                            <input type="date" name="receipt_date" placeholder="收货日期">
+                            <input type="number" name="operator_employee_id" placeholder="操作员工ID" style="width:130px;">
+                            <button class="btn primary" type="submit">收货入库</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        {% set total = page_data['total'] %}
+        {% set page = page_data['page'] %}
+        {% set page_size = page_data['page_size'] %}
+        {% set total_pages = (total + page_size - 1) // page_size %}
+
+        <div class="pagination" style="margin-top:12px; display:flex; gap:8px; align-items:center;">
+            <span>第 {{ page }} / {{ total_pages }} 页（共 {{ total }} 条）</span>
+            {% if page > 1 %}
+                <a class="btn" href="{{ url_for('purchases_list', page=1, page_size=page_size, status=status, task_id=task_id) }}">首页</a>
+                <a class="btn" href="{{ url_for('purchases_list', page=page-1, page_size=page_size, status=status, task_id=task_id) }}">上一页</a>
+            {% endif %}
+            {% if page < total_pages %}
+                <a class="btn" href="{{ url_for('purchases_list', page=page+1, page_size=page_size, status=status, task_id=task_id) }}">下一页</a>
+                <a class="btn" href="{{ url_for('purchases_list', page=total_pages, page_size=page_size, status=status, task_id=task_id) }}">末页</a>
+            {% endif %}
+        </div>
+    {% else %}
+        <p>暂无采购记录，点击右上角“新建采购”创建一条。</p>
+    {% endif %}
+</main>
+</body>
+</html>
+

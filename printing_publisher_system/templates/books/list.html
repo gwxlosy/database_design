@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>书籍管理 - 列表</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+<header class="navbar">
+    <div class="navbar-brand">印刷出版商数据库管理系统</div>
+    <nav class="navbar-links">
+        <a href="{{ url_for('index') }}">首页</a>
+        <a href="{{ url_for('books_list') }}" class="active">书籍管理</a>
+        <a href="{{ url_for('list_tasks') }}">印刷任务</a>
+        <a href="{{ url_for('inventory_overview') }}">库存管理</a>
+        <a href="{{ url_for('materials_list') }}">材料/供应商</a>
+        <a href="{{ url_for('employees_list') }}">人员管理</a>
+        {% if current_user %}
+            <a href="{{ url_for('change_password') }}">修改密码</a>
+            <span style="margin-left: 1rem; color: #ecf0f1;">{{ current_user.username }} ({{ current_user.position }})</span>
+            <a href="{{ url_for('logout') }}">登出</a>
+        {% else %}
+            <a href="{{ url_for('login') }}">登录</a>
+        {% endif %}
+    </nav>
+</header>
+<main class="container">
+    <div class="page-header">
+        <h1>书籍管理</h1>
+        {% if is_editor_or_admin %}
+            <a href="{{ url_for('books_new') }}" class="btn primary">新增书籍</a>
+        {% endif %}
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="messages">
+                {% for category, message in messages %}
+                    <div class="alert {{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <form method="get" class="filters" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin:12px 0;">
+        <label for="name">书名：</label>
+        <input type="text" id="name" name="name" value="{{ name or '' }}" placeholder="输入书名关键字" style="min-width:180px;">
+        <label for="author">作者：</label>
+        <input type="text" id="author" name="author" value="{{ author or '' }}" placeholder="作者" style="min-width:150px;">
+        <label for="sort">排序：</label>
+        <select id="sort" name="sort">
+            <option value="id_asc" {% if sort=='id_asc' or not sort %}selected{% endif %}>ID升序</option>
+            <option value="id_desc" {% if sort=='id_desc' %}selected{% endif %}>ID降序</option>
+            <option value="name_alpha" {% if sort=='name_alpha' %}selected{% endif %}>名称（首字母）</option>
+        </select>
+        <button type="submit" class="btn">筛选</button>
+        <a class="btn" href="{{ url_for('books_list') }}">重置</a>
+    </form>
+
+    {% if items and items|length > 0 %}
+        <table class="table">
+            <thead>
+            <tr>
+                <th>书籍ID</th>
+                <th>书籍名称</th>
+                <th>作者</th>
+                <th>操作</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for b in items %}
+                <tr>
+                    <td>{{ b['书籍id'] }}</td>
+                    <td>{{ b['书籍名称'] }}</td>
+                    <td>{{ b['作者'] }}</td>
+                    <td>
+                        <a href="{{ url_for('book_versions', book_id=b['书籍id']) }}" class="btn">版本</a>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>暂无书籍数据。</p>
+    {% endif %}
+</main>
+</body>
+</html>
+

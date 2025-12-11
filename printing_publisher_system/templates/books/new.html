@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>新增书籍</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+<header class="navbar">
+    <div class="navbar-brand">印刷出版商数据库管理系统</div>
+    <nav class="navbar-links">
+        <a href="{{ url_for('index') }}">首页</a>
+        <a href="{{ url_for('books_list') }}" class="active">书籍管理</a>
+        <a href="{{ url_for('list_tasks') }}">印刷任务</a>
+        <a href="{{ url_for('inventory_overview') }}">库存管理</a>
+        <a href="{{ url_for('employees_list') }}">人员管理</a>
+        {% if current_user %}
+            <a href="{{ url_for('change_password') }}">修改密码</a>
+            <span style="margin-left: 1rem; color: #ecf0f1;">{{ current_user.username }} ({{ current_user.position }})</span>
+            <a href="{{ url_for('logout') }}">登出</a>
+        {% else %}
+            <a href="{{ url_for('login') }}">登录</a>
+        {% endif %}
+    </nav>
+</header>
+<main class="container">
+    <div class="page-header">
+        <h1>新增书籍</h1>
+        <a href="{{ url_for('books_list') }}" class="btn">返回列表</a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="messages">
+                {% for category, message in messages %}
+                    <div class="alert {{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <form method="post" class="form card" style="max-width: 520px;">
+        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+        <div class="form-group">
+            <label for="name">书籍名称</label>
+            <input id="name" name="name" required placeholder="请输入书名">
+        </div>
+        <div class="form-group">
+            <label for="author">作者</label>
+            <input id="author" name="author" placeholder="作者（可选）">
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn primary">保存</button>
+            <a href="{{ url_for('books_list') }}" class="btn">取消</a>
+        </div>
+    </form>
+</main>
+</body>
+</html>
+
