@@ -16,7 +16,7 @@ def getenv_bool(key: str, default: bool = False) -> bool:
 
 # 数据库配置（从环境变量读取，提供安全默认值）
 DB_CONFIG = {
-    'host': os.getenv('DB_HOST', '10.77.161.135'),
+    'host': os.getenv('DB_HOST', '10.82.157.204'),
     'port': int(os.getenv('DB_PORT', '3306')),
     'user': os.getenv('DB_USER', 'root'),
     'password': os.getenv('DB_PASSWORD', '123456'),
@@ -40,5 +40,6 @@ FLASK_PORT = int(os.getenv('FLASK_PORT', '5000'))
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
 
 # 职位白名单（可通过环境变量 POSITIONS 覆盖，使用中文逗号或英文逗号分隔）
-_raw_positions = os.getenv('POSITIONS', '编辑,排版,印刷工,采购,仓储,销售,人事,管理员')
+# 默认去掉仓储、排版、销售
+_raw_positions = os.getenv('POSITIONS', '编辑,印刷工,采购,人事,管理员')
 POSITIONS = [p.strip() for p in _raw_positions.replace('，', ',').split(',') if p.strip()]

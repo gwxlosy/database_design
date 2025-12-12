@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>新增供应商</title>
+    <title>编辑供应商</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
@@ -10,24 +10,13 @@
     <div class="navbar-brand">印刷出版商数据库管理系统</div>
     <nav class="navbar-links">
         <a href="{{ url_for('index') }}">首页</a>
-        <a href="{{ url_for('books_list') }}">书籍管理</a>
-        <a href="{{ url_for('list_tasks') }}">印刷任务</a>
-        <a href="{{ url_for('inventory_overview') }}">库存管理</a>
-        <a href="{{ url_for('materials_list') }}" class="active">材料/供应商</a>
-        <a href="{{ url_for('employees_list') }}">人员管理</a>
-        {% if current_user %}
-            <a href="{{ url_for('change_password') }}">修改密码</a>
-            <span style="margin-left: 1rem; color: #ecf0f1;">{{ current_user.username }} ({{ current_user.position }})</span>
-            <a href="{{ url_for('logout') }}">登出</a>
-        {% else %}
-            <a href="{{ url_for('login') }}">登录</a>
-        {% endif %}
+        <a href="{{ url_for('suppliers_list') }}" class="active">供应商</a>
     </nav>
 </header>
 <main class="container">
     <div class="page-header">
-        <h1>新增供应商</h1>
-        <a href="{{ url_for('suppliers_list') }}" class="btn">返回供应商列表</a>
+        <h1>编辑供应商</h1>
+        <a href="{{ url_for('suppliers_list') }}" class="btn">返回列表</a>
     </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -40,25 +29,25 @@
         {% endif %}
     {% endwith %}
 
-    <form method="post" class="form card" style="max-width: 520px;">
+    <form method="post" class="form card" style="max-width:520px;">
         {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
         <div class="form-group">
             <label for="name">供应商名称</label>
-            <input id="name" name="name" required placeholder="请输入供应商名称">
+            <input id="name" name="name" required value="{{ supplier['供应商名称'] }}">
         </div>
         <div class="form-group">
             <label for="contact">联系人</label>
-            <input id="contact" name="contact" placeholder="联系人（可选）">
+            <input id="contact" name="contact" value="{{ supplier.get('供应商联系人') }}">
         </div>
         <div class="form-group">
             <label for="phone">联系电话</label>
-            <input id="phone" name="phone" placeholder="联系电话（可选）">
+            <input id="phone" name="phone" value="{{ supplier.get('联系电话') }}">
         </div>
         <div class="form-group">
             <label for="status">合作状态</label>
             <select id="status" name="status">
-                <option value="合作中">合作中</option>
-                <option value="已终止">已终止</option>
+                <option value="合作中" {% if supplier.get('合作状态')=='合作中' %}selected{% endif %}>合作中</option>
+                <option value="已终止" {% if supplier.get('合作状态')=='已终止' %}selected{% endif %}>已终止</option>
             </select>
         </div>
         <div class="form-actions">

@@ -33,13 +33,27 @@
             {{ form.csrf_token }}
             <div class="form-group">
                 <label for="employee_id">员工ID：</label>
-                {{ form.employee_id(min=1, required=True) }}
-                {% for e in form.employee_id.errors %}<div class="error">{{ e }}</div>{% endfor %}
+                <select id="employee_id" name="employee_id" required>
+                    <option value="">请选择员工</option>
+                    {% for emp in employees %}
+                    <option value="{{ emp['员工id'] }}">{{ emp['员工id'] }} - {{ emp['员工姓名'] }}（{{ emp['职位'] }}）</option>
+                    {% endfor %}
+                </select>
             </div>
             <div class="form-group">
                 <label for="book_id">书籍ID：</label>
-                {{ form.book_id(min=1, required=True) }}
-                {% for e in form.book_id.errors %}<div class="error">{{ e }}</div>{% endfor %}
+                <select id="book_id" name="book_id" required>
+                    <option value="">请选择书籍</option>
+                    {% for b in books %}
+                    <option value="{{ b['书籍id'] }}">{{ b['书籍id'] }} - {{ b['书籍名称'] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="book_version_id">书籍版本：</label>
+                <select id="book_version_id" name="book_version_id" required>
+                    <option value="">请选择版本</option>
+                </select>
             </div>
             <div class="form-group">
                 <label for="quantity">印刷数量：</label>
@@ -50,6 +64,19 @@
                 <label for="due_date">预计完成日期：</label>
                 {{ form.due_date(value=default_due_date, required=True) }}
                 {% for e in form.due_date.errors %}<div class="error">{{ e }}</div>{% endfor %}
+            </div>
+            <div class="form-group">
+                <label>选择所需材料：</label>
+                <div style="display:flex; flex-wrap:wrap; gap:12px;">
+                    {% for m in materials %}
+                    <label style="display:flex; align-items:center; gap:6px;">
+                        <input type="checkbox" name="materials" value="{{ m['材料id'] }}"> {{ m['材料名称'] }}
+                    </label>
+                    {% endfor %}
+                    {% if not materials %}
+                    <span style="color:#888;">暂无材料可选，请先维护材料</span>
+                    {% endif %}
+                </div>
             </div>
             <div class="form-actions">
                 <button type="submit" class="btn primary">提交任务</button>
@@ -63,11 +90,27 @@
             {% endif %}
             <div class="form-group">
                 <label for="employee_id">员工ID：</label>
-                <input type="number" id="employee_id" name="employee_id" required min="1">
+                <select id="employee_id" name="employee_id" required>
+                    <option value="">请选择员工</option>
+                    {% for emp in employees %}
+                    <option value="{{ emp['员工id'] }}">{{ emp['员工id'] }} - {{ emp['员工姓名'] }}（{{ emp['职位'] }}）</option>
+                    {% endfor %}
+                </select>
             </div>
             <div class="form-group">
                 <label for="book_id">书籍ID：</label>
-                <input type="number" id="book_id" name="book_id" required min="1">
+                <select id="book_id" name="book_id" required>
+                    <option value="">请选择书籍</option>
+                    {% for b in books %}
+                    <option value="{{ b['书籍id'] }}">{{ b['书籍id'] }} - {{ b['书籍名称'] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="book_version_id">书籍版本：</label>
+                <select id="book_version_id" name="book_version_id" required>
+                    <option value="">请选择版本</option>
+                </select>
             </div>
             <div class="form-group">
                 <label for="quantity">印刷数量：</label>
@@ -77,6 +120,19 @@
                 <label for="due_date">预计完成日期：</label>
                 <input type="date" id="due_date" name="due_date" value="{{ default_due_date }}" required>
             </div>
+            <div class="form-group">
+                <label>选择所需材料：</label>
+                <div style="display:flex; flex-wrap:wrap; gap:12px;">
+                    {% for m in materials %}
+                    <label style="display:flex; align-items:center; gap:6px;">
+                        <input type="checkbox" name="materials" value="{{ m['材料id'] }}"> {{ m['材料名称'] }}
+                    </label>
+                    {% endfor %}
+                    {% if not materials %}
+                    <span style="color:#888;">暂无材料可选，请先维护材料</span>
+                    {% endif %}
+                </div>
+            </div>
             <div class="form-actions">
                 <button type="submit" class="btn primary">提交任务</button>
                 <a href="{{ url_for('list_tasks') }}" class="btn">返回任务列表</a>
@@ -84,6 +140,40 @@
         </form>
         {% endif %}
     </main>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const bookInput = document.getElementById('book_id');
+  const versionSelect = document.getElementById('book_version_id');
+
+  async function loadVersions() {
+    const bookId = parseInt(bookInput.value || '0', 10);
+    versionSelect.innerHTML = '<option value="">请选择版本</option>';
+    if (!bookId) return;
+    try {
+      const resp = await fetch(`{{ url_for('api_book_versions') }}?book_id=${bookId}`);
+      const data = await resp.json();
+      if (!data.success) return;
+      const items = data.data.items || [];
+      for (const v of items) {
+        const opt = document.createElement('option');
+        opt.value = v['书籍版本id'];
+        opt.textContent = `${v['书籍版本id']} - 书籍ID${v['书籍id']} - ${v['版本描述'] || ''}`;
+        versionSelect.appendChild(opt);
+      }
+    } catch (e) {
+      // ignore fetch errors
+    }
+  }
+
+  if (bookInput) {
+    bookInput.addEventListener('change', loadVersions);
+    // 若初始有值则尝试加载
+    if (bookInput.value) {
+      loadVersions();
+    }
+  }
+});
+</script>
 </body>
 </html>
 

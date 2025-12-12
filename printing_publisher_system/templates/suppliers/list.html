@@ -50,7 +50,14 @@
         <select id="status" name="status">
             <option value="" {% if not status %}selected{% endif %}>全部</option>
             <option value="合作中" {% if status=='合作中' %}selected{% endif %}>合作中</option>
-            <option value="暂停" {% if status=='暂停' %}selected{% endif %}>暂停</option>
+            <option value="已终止" {% if status=='已终止' %}selected{% endif %}>已终止</option>
+        </select>
+        <label for="sort">排序：</label>
+        <select id="sort" name="sort">
+            <option value="id_desc" {% if sort=='id_desc' or not sort %}selected{% endif %}>ID降序</option>
+            <option value="id_asc" {% if sort=='id_asc' %}selected{% endif %}>ID升序</option>
+            <option value="name_asc" {% if sort=='name_asc' %}selected{% endif %}>名称升序</option>
+            <option value="name_desc" {% if sort=='name_desc' %}selected{% endif %}>名称降序</option>
         </select>
         <button type="submit" class="btn">筛选</button>
         <a class="btn" href="{{ url_for('suppliers_list') }}">重置</a>
@@ -65,6 +72,7 @@
                 <th>联系人</th>
                 <th>电话</th>
                 <th>合作状态</th>
+                {% if is_material_manager %}<th>操作</th>{% endif %}
             </tr>
             </thead>
             <tbody>
@@ -75,6 +83,19 @@
                     <td>{{ s.get('供应商联系人') }}</td>
                     <td>{{ s.get('联系电话') }}</td>
                     <td>{{ s.get('合作状态') }}</td>
+                    {% if is_material_manager %}
+                    <td>
+                        <a class="btn" href="{{ url_for('suppliers_edit', supplier_id=s['供应商id']) }}">编辑</a>
+                        <form method="post" action="{{ url_for('supplier_update_status', supplier_id=s['供应商id']) }}" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+                            <select name="status">
+                                <option value="合作中" {% if s.get('合作状态')=='合作中' %}selected{% endif %}>合作中</option>
+                                <option value="已终止" {% if s.get('合作状态')=='已终止' %}selected{% endif %}>已终止</option>
+                            </select>
+                            <button class="btn primary" type="submit">更新</button>
+                        </form>
+                    </td>
+                    {% endif %}
                 </tr>
             {% endfor %}
             </tbody>

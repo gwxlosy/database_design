@@ -489,6 +489,18 @@ class 库存日志DAO(BaseDAO):
         with self.db.get_cursor() as cursor:
             cursor.execute(query, (material_id, limit))
             return cursor.fetchall()
+
+    def get_log_by_reference(self, reference: str) -> Optional[Dict[str, Any]]:
+        """根据关联业务标识获取最新一条日志"""
+        query = """
+            SELECT * FROM 库存日志表
+            WHERE 关联的业务记录标识 = %s
+            ORDER BY 变动时间 DESC, 库存日志id DESC
+            LIMIT 1
+        """
+        with self.db.get_cursor() as cursor:
+            cursor.execute(query, (reference,))
+            return cursor.fetchone()
     
     def get_recent_logs(self, days: int = 30) -> List[Dict[str, Any]]:
         """获取最近指定天数的库存日志"""

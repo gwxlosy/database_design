@@ -18,7 +18,9 @@
     <main class="container">
         <div class="page-header">
             <h1>印刷任务列表</h1>
+            {% if is_print_operator %}
             <a href="{{ url_for('new_task') }}" class="btn primary">新建任务</a>
+            {% endif %}
         </div>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -31,7 +33,7 @@
             {% endif %}
         {% endwith %}
 
-        <form method="get" class="form" style="margin: 12px 0; display:flex; gap:12px; align-items:center;">
+        <form method="get" class="form" style="margin: 12px 0; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
             <label for="status">状态筛选：</label>
             <select name="status" id="status">
                 <option value="" {% if not status %}selected{% endif %}>全部</option>
@@ -39,6 +41,11 @@
                 <option value="进行中" {% if status=='进行中' %}selected{% endif %}>进行中</option>
                 <option value="已完成" {% if status=='已完成' %}selected{% endif %}>已完成</option>
                 <option value="已取消" {% if status=='已取消' %}selected{% endif %}>已取消</option>
+            </select>
+            <label for="sort">排序：</label>
+            <select name="sort" id="sort">
+                <option value="id_desc" {% if sort=='id_desc' or not sort %}selected{% endif %}>ID降序</option>
+                <option value="id_asc" {% if sort=='id_asc' %}selected{% endif %}>ID升序</option>
             </select>
             <label for="page_size">每页：</label>
             <input type="number" name="page_size" id="page_size" value="{{ page_data['page_size'] if page_data else 10 }}" min="1" max="200" style="width:80px;">
@@ -53,6 +60,7 @@
                         <th>任务ID</th>
                         <th>员工ID</th>
                         <th>书籍ID</th>
+                        <th>书籍版本ID</th>
                         <th>印刷数量</th>
                         <th>预计完成日期</th>
                         <th>任务状态</th>
@@ -65,6 +73,7 @@
                             <td>{{ task['印刷任务id'] }}</td>
                             <td>{{ task['员工id'] }}</td>
                             <td>{{ task['书籍id'] }}</td>
+                            <td>{{ task.get('书籍版本id') }}</td>
                             <td>{{ task['印刷数量'] }}</td>
                             <td>{{ task['预计完成日期'] }}</td>
                             <td>{{ task['任务状态'] }}</td>

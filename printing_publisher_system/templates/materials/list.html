@@ -1,4 +1,3 @@
-*** End Patch
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -47,6 +46,13 @@
     <form method="get" class="filters" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin:12px 0;">
         <label for="name">材料名称：</label>
         <input type="text" id="name" name="name" value="{{ name or '' }}" placeholder="输入名称关键字" style="min-width:180px;">
+        <label for="sort">排序：</label>
+        <select id="sort" name="sort">
+            <option value="" {% if not sort %}selected{% endif %}>默认(ID正序)</option>
+            <option value="id_desc" {% if sort=='id_desc' %}selected{% endif %}>ID倒序</option>
+            <option value="name_asc" {% if sort=='name_asc' %}selected{% endif %}>名称升序</option>
+            <option value="name_desc" {% if sort=='name_desc' %}selected{% endif %}>名称降序</option>
+        </select>
         <button type="submit" class="btn">筛选</button>
         <a class="btn" href="{{ url_for('materials_list') }}">重置</a>
     </form>
@@ -69,10 +75,13 @@
                     <td>{{ m['材料id'] }}</td>
                     <td>{{ m['材料名称'] }}</td>
                     <td>{{ m.get('规格') }}</td>
-                    <td>{{ m.get('单位') }}</td>
+                    <td>{{ m.get('计量单位') }}</td>
                     <td>{{ m.get('标准单价') }}</td>
                     <td>
                         <a class="btn" href="{{ url_for('material_suppliers', material_id=m['材料id']) }}">供应商</a>
+                        {% if is_material_manager %}
+                        <a class="btn" href="{{ url_for('materials_edit', material_id=m['材料id']) }}">编辑</a>
+                        {% endif %}
                     </td>
                 </tr>
             {% endfor %}

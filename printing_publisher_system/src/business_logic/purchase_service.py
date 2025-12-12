@@ -4,7 +4,7 @@ from datetime import date
 from typing import Any, Dict, Optional
 
 from src.business_logic.base_service import BaseService
-from src.database.daos import 采购清单DAO, 材料供应商关联DAO, 材料DAO, 供应商DAO, 印刷任务DAO
+from src.database.daos import 采购清单DAO, 材料供应商关联DAO, 材料DAO, 供应商DAO, 印刷任务DAO, 库存日志DAO
 from src.business_logic.inventory_service import InventoryService
 
 
@@ -22,6 +22,7 @@ class PurchaseService(BaseService):
         self.supplier_dao = 供应商DAO()
         self.inventory_service = InventoryService()
         self.task_dao = 印刷任务DAO()
+        self.stock_log_dao = 库存日志DAO()
 
     # ========= 查询 =========
     def list_purchases_page(
@@ -51,6 +52,10 @@ class PurchaseService(BaseService):
                     supplier = self.supplier_dao.get_by_id(link.get("供应商id"))
                     it["关联_材料名称"] = material.get("材料名称") if material else None
                     it["关联_供应商名称"] = supplier.get("供应商名称") if supplier else None
+                ref = f"purchase:{it.get('采购记录id')}"
+                log = self.stock_log_dao.get_log_by_reference(ref)
+                if log:
+                    it["操作员工id"] = log.get("操作人")
             page_data["items"] = items
             return self._create_success_response(data=page_data)
         except Exception as e:

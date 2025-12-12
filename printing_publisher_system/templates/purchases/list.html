@@ -18,7 +18,9 @@
 <main class="container">
     <div class="page-header">
         <h1>采购记录</h1>
+        {% if is_material_manager %}
         <a href="{{ url_for('purchases_new') }}" class="btn primary">新建采购</a>
+        {% endif %}
     </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -40,6 +42,11 @@
         </select>
         <label for="task_id">任务ID：</label>
         <input type="number" name="task_id" id="task_id" value="{{ task_id or '' }}" style="width:120px;">
+        <label for="sort">排序：</label>
+        <select id="sort" name="sort">
+            <option value="id_desc" {% if sort=='id_desc' or not sort %}selected{% endif %}>ID降序</option>
+            <option value="id_asc" {% if sort=='id_asc' %}selected{% endif %}>ID升序</option>
+        </select>
         <label for="page_size">每页：</label>
         <input type="number" name="page_size" id="page_size" value="{{ page_data['page_size'] if page_data else 10 }}" min="1" max="200" style="width:80px;">
         <button type="submit" class="btn">查询</button>
@@ -57,6 +64,7 @@
                     <th>采购数量</th>
                     <th>单价</th>
                     <th>总成本</th>
+                    <th>操作员工ID</th>
                     <th>状态</th>
                     <th>采购日期</th>
                     <th>收货日期</th>
@@ -73,15 +81,21 @@
                     <td>{{ row['采购数量'] }}</td>
                     <td>{{ row.get('关联_单价') if row.get('关联_单价') is not none else '-' }}</td>
                     <td>{{ row['总成本'] }}</td>
+                    <td>{{ row.get('操作员工id') or '-' }}</td>
                     <td>{{ row['采购状态'] }}</td>
                     <td>{{ row.get('采购日期') or '-' }}</td>
                     <td>{{ row.get('材料收货日期') or '-' }}</td>
                     <td style="min-width: 260px;">
-                        {% if row['采购状态'] != '已收货' and row['采购状态'] != '已取消' %}
+                        {% if is_material_manager and row['采购状态'] != '已收货' and row['采购状态'] != '已取消' %}
                         <form method="post" action="{{ url_for('purchases_receive', purchase_id=row['采购记录id']) }}" style="display:inline-flex; gap:6px; align-items:center; flex-wrap: wrap; margin-top:6px;">
                             {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
                             <input type="date" name="receipt_date" placeholder="收货日期">
-                            <input type="number" name="operator_employee_id" placeholder="操作员工ID" style="width:130px;">
+                            <select name="operator_employee_id" required style="min-width:140px;">
+                                <option value="">操作员工</option>
+                                {% for emp in employees %}
+                                <option value="{{ emp['员工id'] }}">{{ emp['员工id'] }} - {{ emp['员工姓名'] }}（{{ emp['职位'] }}）</option>
+                                {% endfor %}
+                            </select>
                             <button class="btn primary" type="submit">收货入库</button>
                         </form>
                         {% endif %}

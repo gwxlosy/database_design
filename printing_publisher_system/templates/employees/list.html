@@ -26,7 +26,7 @@
 <main class="container">
     <div class="page-header">
         <h1>人员管理</h1>
-        {% if is_admin %}
+        {% if is_admin or (current_user and current_user.position == '人事') %}
             <a href="{{ url_for('employees_new') }}" class="btn primary">新增员工</a>
         {% endif %}
     </div>
@@ -57,6 +57,11 @@
             <option value="在职" {% if status=='在职' %}selected{% endif %}>在职</option>
             <option value="离职" {% if status=='离职' %}selected{% endif %}>离职</option>
         </select>
+        <label for="sort">排序：</label>
+        <select id="sort" name="sort">
+            <option value="id_desc" {% if sort=='id_desc' or not sort %}selected{% endif %}>ID降序</option>
+            <option value="id_asc" {% if sort=='id_asc' %}selected{% endif %}>ID升序</option>
+        </select>
         <label for="page_size">每页：</label>
         <input type="number" id="page_size" name="page_size" min="1" max="200" value="{{ page_data['page_size'] if page_data else 10 }}" style="width:80px;">
         <button type="submit" class="btn">筛选</button>
@@ -85,13 +90,9 @@
                     <td>{{ e['在职状态'] }}</td>
                     <td>{{ e['入职日期'] }}</td>
                     <td>
-                        {% if is_admin %}
+                        {% if is_admin or (current_user and current_user.position == '人事') %}
                             <a href="{{ url_for('employees_account', employee_id=e['员工id']) }}" class="btn">账号</a>
                             <a href="{{ url_for('employees_edit', employee_id=e['员工id']) }}" class="btn">编辑</a>
-                            <form method="post" action="{{ url_for('employees_delete', employee_id=e['员工id']) }}" style="display:inline;" onsubmit="return confirm('确认删除该员工？');">
-                                {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
-                                <button type="submit" class="btn danger">删除</button>
-                            </form>
                         {% else %}
                             <span style="color: #999;">无权限</span>
                         {% endif %}

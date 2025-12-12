@@ -32,8 +32,13 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {% endif %}
         <div class="form-group">
-            <label for="task_id">印刷任务ID：</label>
-            <input type="number" id="task_id" name="task_id" required min="1" placeholder="例如：1001">
+            <label for="task_id">印刷任务：</label>
+            <select id="task_id" name="task_id" required>
+                <option value="">请选择印刷任务</option>
+                {% for t in tasks %}
+                <option value="{{ t['印刷任务id'] }}">{{ t['印刷任务id'] }} - {{ t.get('书籍id') }} - {{ t.get('任务状态') }}</option>
+                {% endfor %}
+            </select>
         </div>
         <div class="form-group">
             <label for="link_id">材料-供应商：</label>
@@ -48,7 +53,10 @@
         </div>
         <div class="form-group">
             <label for="quantity">采购数量：</label>
-            <input type="number" id="quantity" name="quantity" required min="0.001" step="0.001" placeholder="例如：100.000">
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <input type="number" id="quantity" name="quantity" required min="0.001" step="0.001" placeholder="例如：100.000" style="flex:1; min-width:160px;">
+                <span id="required_hint" style="color:#888; font-size:0.9em;">需求量：--</span>
+            </div>
         </div>
         <div class="form-actions">
             <button type="submit" class="btn primary">创建采购</button>
@@ -62,6 +70,36 @@
     </div>
     {% endif %}
 </main>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const taskInput = document.getElementById('task_id');
+  const linkSelect = document.getElementById('link_id');
+  const hint = document.getElementById('required_hint');
+
+  async function updateHint() {
+    const taskId = parseInt(taskInput.value || '0', 10);
+    const linkId = parseInt(linkSelect.value || '0', 10);
+    if (!taskId || !linkId) {
+      hint.textContent = '需求量：--';
+      return;
+    }
+    try {
+      const resp = await fetch(`{{ url_for('api_requirement') }}?task_id=${taskId}&link_id=${linkId}`);
+      const data = await resp.json();
+      if (data.success) {
+        hint.textContent = `需求量：${data.required_qty}`;
+      } else {
+        hint.textContent = '需求量：获取失败';
+      }
+    } catch (e) {
+      hint.textContent = '需求量：获取失败';
+    }
+  }
+
+  taskInput.addEventListener('change', updateHint);
+  linkSelect.addEventListener('change', updateHint);
+});
+</script>
 </body>
 </html>
 

@@ -2,7 +2,7 @@ from datetime import datetime, date
 from typing import Dict, Any, Optional, List
 
 from src.database.daos import (
-    印刷任务DAO, 员工DAO, 书籍核心信息DAO, 材料DAO, 
+    印刷任务DAO, 员工DAO, 书籍核心信息DAO, 书籍版本DAO, 材料DAO,
     材料供应商关联DAO, 采购清单DAO, 库存日志DAO, DatabaseManager
 )
 from src.business_logic.base_service import BaseService
@@ -22,9 +22,26 @@ class PrintingTaskService(BaseService):
             task = self.task_dao.get_by_id(task_id)
             if not task:
                 return self._create_error_response("任务不存在")
-            qty = int(task.get('印刷数量') or 0)
-            ctx = {'印刷数量': qty, '书籍id': task.get('书籍id')}
-            required = self._calculate_material_requirements(ctx)
+            # 优先使用已有采购记录推导用量（确保与创建时一致）
+            required: Dict[int, float] = {}
+            purchases = self.purchase_dao.get_purchases_by_task(task_id)
+            if purchases:
+                for p in purchases:
+                    link_id = p.get('材料供应商关联id')
+                    link = self.material_supplier_dao.get_by_id(link_id) if link_id else None
+                    material_id = int(link.get('材料id')) if link else None
+                    if not material_id:
+                        continue
+                    required[material_id] = float(p.get('采购数量') or 0)
+            else:
+                qty = int(task.get('印刷数量') or 0)
+                ctx = {
+                    '印刷数量': qty,
+                    '书籍id': task.get('书籍id'),
+                    '书籍版本id': task.get('书籍版本id'),
+                    '材料列表': task.get('材料列表') or [],
+                }
+                required = self._calculate_material_requirements(ctx)
             items: List[Dict[str, Any]] = []
             total_required: float = 0.0
             for mid, rqty in (required or {}).items():
@@ -61,9 +78,26 @@ class PrintingTaskService(BaseService):
             if not operator_id:
                 return self._create_error_response("无法确定库存操作人")
 
-            qty = int(task.get('印刷数量') or 0)
-            ctx = {'印刷数量': qty, '书籍id': task.get('书籍id')}
-            required = self._calculate_material_requirements(ctx)
+            # 优先使用采购记录推导用量，保持与创建一致
+            required: Dict[int, float] = {}
+            purchases = self.purchase_dao.get_purchases_by_task(task_id)
+            if purchases:
+                for p in purchases:
+                    link_id = p.get('材料供应商关联id')
+                    link = self.material_supplier_dao.get_by_id(link_id) if link_id else None
+                    material_id = int(link.get('材料id')) if link else None
+                    if not material_id:
+                        continue
+                    required[material_id] = float(p.get('采购数量') or 0)
+            else:
+                qty = int(task.get('印刷数量') or 0)
+                ctx = {
+                    '印刷数量': qty,
+                    '书籍id': task.get('书籍id'),
+                    '书籍版本id': task.get('书籍版本id'),
+                    '材料列表': task.get('材料列表') or []
+                }
+                required = self._calculate_material_requirements(ctx)
 
             # 先校验库存是否充足
             shortages: List[Dict[str, Any]] = []
@@ -119,10 +153,35 @@ class PrintingTaskService(BaseService):
         self.task_dao = 印刷任务DAO()
         self.employee_dao = 员工DAO()
         self.book_dao = 书籍核心信息DAO()
+        self.book_version_dao = 书籍版本DAO()
         self.material_dao = 材料DAO()
         self.material_supplier_dao = 材料供应商关联DAO()
         self.purchase_dao = 采购清单DAO()
         self.stock_log_dao = 库存日志DAO()
+        self._task_version_checked = False
+
+    def _ensure_task_version_column(self, conn) -> None:
+        """
+        确保印刷任务表存在“书籍版本id”列。
+        若不存在则尝试自动添加，可避免 Unknown column 错误。
+        """
+        if self._task_version_checked:
+            return
+        try:
+            with conn.cursor(dictionary=True) as cursor:
+                cursor.execute("SHOW COLUMNS FROM 印刷任务表 LIKE '书籍版本id'")
+                row = cursor.fetchone()
+                if row:
+                    self._task_version_checked = True
+                    return
+                # 尝试添加列，允许为空以兼容历史数据
+                cursor.execute("ALTER TABLE 印刷任务表 ADD COLUMN `书籍版本id` INT NULL COMMENT '关联书籍版本'")
+                conn.commit()
+                self._task_version_checked = True
+        except Exception:
+            # 不抛出，让后续插入时再暴露问题
+            conn.rollback()
+            self._task_version_checked = False
 
     def submit_printing_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -152,8 +211,19 @@ class PrintingTaskService(BaseService):
             conn.start_transaction()
             self.logger.debug("数据库事务开始")
 
+            # 确保“书籍版本id”列存在
+            self._ensure_task_version_column(conn)
+
             # 3. 创建印刷任务记录
-            task_id = self.task_dao.create_with_connection(task_data, conn)
+            db_payload = {
+                '员工id': task_data['员工id'],
+                '书籍id': task_data['书籍id'],
+                '书籍版本id': task_data['书籍版本id'],
+                '预计完成日期': task_data['预计完成日期'],
+                '印刷数量': task_data['印刷数量'],
+                '任务状态': task_data.get('任务状态', '待开始'),
+            }
+            task_id = self.task_dao.create_with_connection(db_payload, conn)
             if not task_id:
                 raise Exception("创建印刷任务记录失败")
 
@@ -188,7 +258,7 @@ class PrintingTaskService(BaseService):
     def _validate_task_data(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         """验证任务数据的业务规则"""
         # 必需字段验证
-        required_fields = ['员工id', '书籍id', '预计完成日期', '印刷数量']
+        required_fields = ['员工id', '书籍id', '书籍版本id', '预计完成日期', '印刷数量', '材料列表']
         missing_check = self._validate_required_fields(task_data, required_fields)
         if missing_check:
             return missing_check
@@ -207,6 +277,12 @@ class PrintingTaskService(BaseService):
         if due_date < datetime.now().date():
             return self._create_error_response("预计完成日期不能是过去的时间")
 
+        # 材料至少选择一个
+        materials = task_data.get('材料列表') or []
+        if not isinstance(materials, list) or len(materials) == 0:
+            return self._create_error_response("请至少选择一种材料")
+        task_data['材料列表'] = [int(m) for m in materials]
+
         return self._create_success_response()
 
     def _validate_associated_data(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -221,6 +297,18 @@ class PrintingTaskService(BaseService):
             book = self.book_dao.get_by_id(task_data['书籍id'])
             if not book:
                 return self._create_error_response("指定的书籍不存在")
+
+            version = self.book_version_dao.get_by_id(task_data['书籍版本id'])
+            if not version or int(version.get('书籍id') or 0) != int(task_data['书籍id']):
+                return self._create_error_response("书籍版本不存在或不属于该书籍")
+
+            pages = int(version.get('页数') or 0)
+            if pages <= 0:
+                pages = int(book.get('页数') or 0)
+            if pages <= 0:
+                return self._create_error_response("书籍/版本页数未维护，无法计算材料用量")
+            task_data['_book_pages'] = pages
+            task_data['_book_version'] = version
 
             return self._create_success_response()
 
@@ -280,12 +368,41 @@ class PrintingTaskService(BaseService):
         计算完成印刷任务所需的材料清单和数量
         这是一个简化的示例，实际逻辑可能更复杂。
         """
-        # 示例逻辑：假设我们知道印刷该书籍需要哪些材料
-        # 实际应用中，这里可能会有复杂的计算公式
-        materials_needed = {
-            1: task_data['印刷数量'] * 0.5,  # 材料ID 1' 纸张，每本需要0.5kg
-            2: task_data['印刷数量'] * 0.1   # 材料ID'2' 油墨，每本需要0.1kg
-        }
+        selected_materials: List[int] = task_data.get('材料列表') or []
+        if not selected_materials:
+            return {}
+        pages = 0
+        # 优先使用预填的页数
+        try:
+            pages = int(task_data.get('_book_pages') or 0)
+        except Exception:
+            pages = 0
+        # 若未填，则根据版本id获取
+        if pages <= 0:
+            version_id = task_data.get('书籍版本id')
+            if version_id:
+                version = self.book_version_dao.get_by_id(int(version_id))
+                try:
+                    pages = int((version or {}).get('页数') or 0)
+                except Exception:
+                    pages = 0
+        # 若仍未取到，再用书籍表兜底（不再要求书籍必有页数）
+        if pages <= 0:
+            book_id = task_data.get('书籍id')
+            if book_id:
+                book = self.book_dao.get_by_id(int(book_id))
+                try:
+                    pages = int((book or {}).get('页数') or 0)
+                except Exception:
+                    pages = 0
+        if pages <= 0:
+            raise ValueError("书籍/版本页数缺失，无法计算材料用量")
+
+        qty = float(task_data.get('印刷数量') or 0)
+        materials_needed: Dict[int, float] = {}
+        for mid in selected_materials:
+            # 用量 = 页数 * 印刷数量（示例公式）
+            materials_needed[int(mid)] = pages * qty
         return materials_needed
 
     def _select_optimal_supplier(self, material_id: int, quantity: float) -> Optional[Dict[str, Any]]:

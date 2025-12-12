@@ -66,7 +66,11 @@
         </div>
         <div class="form-group">
             <label for="position">职位：</label>
-            <input id="position" name="position">
+            <select id="position" name="position">
+                {% for p in positions %}
+                <option value="{{ p }}">{{ p }}</option>
+                {% endfor %}
+            </select>
         </div>
         <div class="form-group">
             <label for="status">在职状态：</label>

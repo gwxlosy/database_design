@@ -78,12 +78,20 @@ class BookService(BaseService):
         except Exception as e:
             return self._create_error_response(f"获取书籍版本失败: {str(e)}")
 
+    def list_versions_all(self) -> Dict[str, Any]:
+        """获取全部版本，用于选择。"""
+        try:
+            items = self.version_dao.get_all(order_by="书籍id ASC, 版本创建日期 DESC")
+            return self._create_success_response(data={"items": items})
+        except Exception as e:
+            return self._create_error_response(f"获取版本列表失败: {str(e)}")
+
     def create_version(
         self,
         book_id: int,
         version_desc: str,
         isbn: str,
-        pages: Optional[int],
+        pages: int,
         format_text: Optional[str],
         created_date: Optional[str],
     ) -> Dict[str, Any]:
@@ -96,6 +104,12 @@ class BookService(BaseService):
                 return self._create_error_response("版本描述不能为空")
             if not isbn:
                 return self._create_error_response("ISBN不能为空")
+            try:
+                pages_int = int(pages)
+            except Exception:
+                return self._create_error_response("版本页数必须是正整数")
+            if pages_int <= 0:
+                return self._create_error_response("版本页数必须大于0")
             payload: Dict[str, Any] = {
                 "书籍id": book_id,
                 "国际标准书号": isbn,
@@ -103,8 +117,7 @@ class BookService(BaseService):
             }
             if format_text:
                 payload["开本"] = format_text
-            if pages is not None:
-                payload["页数"] = pages
+            payload["页数"] = pages_int
             if created_date:
                 payload["版本创建日期"] = created_date
             new_id = self.version_dao.create(payload)

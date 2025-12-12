@@ -118,6 +118,11 @@ def is_admin() -> bool:
     return _has_position({"管理员"})
 
 
+def is_print_operator() -> bool:
+    """印刷任务相关操作权限：管理员或印刷工。"""
+    return _has_position({"管理员", "印刷工"})
+
+
 def is_editor_or_admin() -> bool:
     """检查当前用户是否为编辑或管理员。"""
     return _has_position({"管理员", "编辑"})

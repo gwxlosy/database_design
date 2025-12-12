@@ -25,6 +25,7 @@ from src.utils.auth import (
     roles_required,
     get_current_user,
     is_admin,
+    is_print_operator,
     is_editor_or_admin,
     is_material_manager,
     is_inventory_operator,
@@ -121,6 +122,7 @@ def create_app() -> Flask:
         return dict(
             current_user=get_current_user(),
             is_admin=is_admin(),
+            is_print_operator=is_print_operator(),
             is_editor_or_admin=is_editor_or_admin(),
             is_material_manager=is_material_manager(),
             is_inventory_operator=is_inventory_operator(),
@@ -199,6 +201,7 @@ def create_app() -> Flask:
         except ValueError:
             page, page_size = 1, 10
         status = request.args.get("status") or None
+        sort = request.args.get("sort") or None
 
         result = printing_service.list_tasks_page(page=page, page_size=page_size, status=status)
         if not result.get("success"):
@@ -207,31 +210,69 @@ def create_app() -> Flask:
         else:
             page_data = result.get("data", {"items": [], "total": 0, "page": page, "page_size": page_size})
 
+        # 简单排序（前端控制）
+        items = page_data.get("items", [])
+        if sort == "id_desc":
+            items = sorted(items, key=lambda x: x.get("印刷任务id", 0), reverse=True)
+        elif sort == "id_asc":
+            items = sorted(items, key=lambda x: x.get("印刷任务id", 0))
+        page_data["items"] = items
+
         total = int(page_data.get("total", 0))
         page = int(page_data.get("page", 1))
         page_size = int(page_data.get("page_size", 10))
         total_pages = (total + page_size - 1) // page_size if page_size > 0 else 0
 
-        return render_template("tasks/list.html", page_data=page_data, status=status, total_pages=total_pages)
+        return render_template("tasks/list.html", page_data=page_data, status=status, total_pages=total_pages, sort=sort)
 
     @app.route("/tasks/new", methods=["GET", "POST"])
     @login_required
+    @roles_required({"管理员", "印刷工"})
     def new_task():
         """
         新建印刷任务表单页面。提交后调用 PrintingTaskService.submit_printing_task。
         优先使用 WTForms 校验（若安装），否则回退原始校验。
         """
         default_due_date = (datetime.now().date().isoformat())
+        materials_res = material_supplier_service.list_materials()
+        materials = materials_res.get("data", {}).get("items", []) if materials_res.get("success") else []
+        # 版本列表由前端按书籍ID动态加载
+        versions: list[dict[str, Any]] = []
+        # 员工下拉：仅在职且具备创建任务权限（管理员/印刷工）
+        try:
+            emp_res = employee_service.list_employees_page(page=1, page_size=500, status="在职")
+            emps_raw = emp_res.get("data", {}).get("items", []) if emp_res.get("success") else []
+        except Exception:
+            emps_raw = []
+        allowed_positions = {"管理员", "印刷工"}
+        employees = [e for e in emps_raw if e.get("职位") in allowed_positions]
+        # 书籍下拉
+        try:
+            books_res = book_service.list_books()
+            books = books_res.get("data", {}).get("items", []) if books_res.get("success") else []
+        except Exception:
+            books = []
 
         # WTForms 路径
         if NewTaskForm is not None:
             form = NewTaskForm()
             if form.validate_on_submit():
+                selected_materials = [int(mid) for mid in request.form.getlist("materials") if mid]
+                version_id_raw = request.form.get("book_version_id")
+                try:
+                    version_id = int(version_id_raw or 0)
+                except Exception:
+                    version_id = 0
+                if not selected_materials:
+                    flash("请至少选择一种材料", "error")
+                    return render_template("tasks/new.html", default_due_date=default_due_date, form=form, materials=materials, versions=versions)
                 task_data: Dict[str, Any] = {
                     "员工id": int(form.employee_id.data),
                     "书籍id": int(form.book_id.data),
+                    "书籍版本id": version_id,
                     "印刷数量": int(form.quantity.data),
                     "预计完成日期": form.due_date.data.isoformat() if form.due_date.data else default_due_date,
+                    "材料列表": selected_materials,
                 }
                 result = printing_service.submit_printing_task(task_data)
                 if result.get("success"):
@@ -241,21 +282,32 @@ def create_app() -> Flask:
                     flash(result.get("message", "任务提交失败"), "error")
                     return redirect(url_for("new_task"))
             # GET 或校验失败
-            return render_template("tasks/new.html", default_due_date=default_due_date, form=form)
+            return render_template("tasks/new.html", default_due_date=default_due_date, form=form, materials=materials, versions=versions, employees=employees, books=books)
 
         # 回退路径：无 WTForms
         if request.method == "POST":
             form = request.form
             try:
+                selected_materials = [int(mid) for mid in form.getlist("materials") if mid]
+                version_id = int(form.get("book_version_id", "0") or 0)
                 task_data = {
                     "员工id": int(form.get("employee_id", "0") or 0),
                     "书籍id": int(form.get("book_id", "0") or 0),
+                    "书籍版本id": version_id,
                     "预计完成日期": form.get("due_date") or default_due_date,
                     "印刷数量": int(form.get("quantity", "0") or 0),
+                    "材料列表": selected_materials,
                 }
             except ValueError:
                 flash("表单数据格式错误，请检查输入。", "error")
                 return redirect(url_for("new_task"))
+
+            if not selected_materials:
+                flash("请至少选择一种材料", "error")
+                return render_template("tasks/new.html", default_due_date=default_due_date, materials=materials, versions=versions, form=None, employees=employees, books=books)
+            if version_id <= 0:
+                flash("请选择书籍版本", "error")
+                return render_template("tasks/new.html", default_due_date=default_due_date, materials=materials, versions=versions, form=None, employees=employees, books=books)
 
             result = printing_service.submit_printing_task(task_data)
             if result.get("success"):
@@ -266,7 +318,23 @@ def create_app() -> Flask:
                 return redirect(url_for("new_task"))
 
         # GET 请求
-        return render_template("tasks/new.html", default_due_date=default_due_date)
+        return render_template("tasks/new.html", default_due_date=default_due_date, materials=materials, versions=versions, employees=employees, books=books)
+
+    @app.route("/api/book_versions", methods=["GET"])
+    @login_required
+    def api_book_versions():
+        """根据书籍ID返回版本列表，供前端联动选择。"""
+        try:
+            book_id = int(request.args.get("book_id", "0"))
+        except Exception:
+            return {"success": False, "message": "参数错误"}
+        if book_id <= 0:
+            return {"success": False, "message": "书籍ID无效"}
+        res = book_service.list_versions(book_id)
+        if not res.get("success"):
+            return {"success": False, "message": res.get("message", "获取版本失败")}
+        items = res.get("data", {}).get("items", [])
+        return {"success": True, "data": {"items": items}}
 
     # ========== 任务：需求明细 & 手动完结 ==========
     @app.route("/tasks/<int:task_id>/requirements", methods=["GET"])
@@ -278,36 +346,20 @@ def create_app() -> Flask:
             return redirect(url_for("list_tasks"))
         data = res.get("data", {})
         task = data.get("task") or {}
-        # 权限收紧：管理员/编辑/任务负责人可查看
-        allow = is_editor_or_admin()
-        if not allow:
-            # 用与 inventory 相同的解析方式获取当前员工id
-            op = None
-            username = session.get("username")
-            try:
-                from src.database.daos import 员工DAO
-                rows = 员工DAO().get_all(filters={"员工姓名": username}) if username else []
-                if rows:
-                    op = rows[0].get("员工id")
-            except Exception:
-                op = None
-            allow = (op is not None and int(op) == int(task.get('员工id') or 0))
-        if not allow:
-            flash("您没有权限查看该任务的材料需求", "error")
-            return redirect(url_for("list_tasks"))
         default_completed_date = datetime.now().date().isoformat()
         return render_template("tasks/requirements.html", task=task, items=data.get("items", []), default_completed_date=default_completed_date)
 
     @app.route("/tasks/<int:task_id>/complete", methods=["POST"])
     @login_required
+    @roles_required({"管理员", "印刷工"})
     def task_complete_manual(task_id: int):
-        # 权限收紧：管理员/编辑/任务负责人可提交完结
+        # 权限收紧：管理员/印刷工/任务负责人可提交完结
         res_ctx = printing_service.get_task_requirements(task_id)
         if not res_ctx.get("success"):
             flash(res_ctx.get("message", "获取任务失败"), "error")
             return redirect(url_for("list_tasks"))
         task = (res_ctx.get("data") or {}).get("task") or {}
-        allow = is_editor_or_admin()
+        allow = is_print_operator()
         if not allow:
             op_emp = None
             username = session.get("username")
@@ -406,7 +458,11 @@ def create_app() -> Flask:
         pages_raw = request.form.get("pages")
         format_text = request.form.get("format")
         created_date = request.form.get("created_date")
-        pages = int(pages_raw) if pages_raw else None
+        try:
+            pages = int(pages_raw or 0)
+        except Exception:
+            flash("页数必须为正整数", "error")
+            return redirect(url_for("book_versions", book_id=book_id))
         result = book_service.create_version(book_id, version_desc, isbn, pages, format_text, created_date)
         if result.get("success"):
             flash("版本创建成功", "success")
@@ -419,9 +475,10 @@ def create_app() -> Flask:
     @login_required
     def materials_list():
         name_kw = request.args.get("name") or None
-        result = material_supplier_service.list_materials(name_kw=name_kw)
+        sort = request.args.get("sort") or None
+        result = material_supplier_service.list_materials(name_kw=name_kw, sort=sort)
         items = result.get("data", {}).get("items", []) if result.get("success") else []
-        return render_template("materials/list.html", items=items, name=name_kw)
+        return render_template("materials/list.html", items=items, name=name_kw, sort=sort)
 
     @app.route("/materials/new", methods=["GET", "POST"])
     @login_required
@@ -440,14 +497,44 @@ def create_app() -> Flask:
             flash(result.get("message", "创建失败"), "error")
         return render_template("materials/new.html")
 
+    @app.route("/materials/<int:material_id>/edit", methods=["GET", "POST"])
+    @login_required
+    @roles_required({"管理员", "采购"})
+    def materials_edit(material_id: int):
+        material = material_supplier_service.material_dao.get_by_id(material_id) if hasattr(material_supplier_service, "material_dao") else None  # type: ignore
+        if not material:
+            flash("材料不存在", "error")
+            return redirect(url_for("materials_list"))
+        if request.method == "POST":
+            name = request.form.get("name", "")
+            unit = request.form.get("unit", "")
+            spec = request.form.get("spec", "")
+            price_raw = request.form.get("price", "")
+            price = float(price_raw) if price_raw else None
+            result = material_supplier_service.update_material(material_id, name, unit, spec, price)
+            if result.get("success"):
+                flash("材料已更新", "success")
+                return redirect(url_for("materials_list"))
+            flash(result.get("message", "更新失败"), "error")
+        return render_template("materials/edit.html", material=material)
+
     @app.route("/suppliers", methods=["GET"])
     @login_required
     def suppliers_list():
         name_kw = request.args.get("name") or None
         status = request.args.get("status") or None
+        sort = request.args.get("sort") or None
         result = material_supplier_service.list_suppliers(name_kw=name_kw, status=status)
         items = result.get("data", {}).get("items", []) if result.get("success") else []
-        return render_template("suppliers/list.html", items=items, name=name_kw, status=status)
+        if sort == "id_desc":
+            items = sorted(items, key=lambda x: x.get("供应商id", 0), reverse=True)
+        elif sort == "id_asc":
+            items = sorted(items, key=lambda x: x.get("供应商id", 0))
+        elif sort == "name_asc":
+            items = sorted(items, key=lambda x: x.get("供应商名称", ""))
+        elif sort == "name_desc":
+            items = sorted(items, key=lambda x: x.get("供应商名称", ""), reverse=True)
+        return render_template("suppliers/list.html", items=items, name=name_kw, status=status, sort=sort)
 
     @app.route("/suppliers/new", methods=["GET", "POST"])
     @login_required
@@ -464,6 +551,35 @@ def create_app() -> Flask:
                 return redirect(url_for("suppliers_list"))
             flash(result.get("message", "创建失败"), "error")
         return render_template("suppliers/new.html")
+
+    @app.route("/suppliers/<int:supplier_id>/edit", methods=["GET", "POST"])
+    @login_required
+    @roles_required({"管理员", "采购"})
+    def suppliers_edit(supplier_id: int):
+        supplier = material_supplier_service.supplier_dao.get_by_id(supplier_id) if hasattr(material_supplier_service, "supplier_dao") else None  # type: ignore
+        if not supplier:
+            flash("供应商不存在", "error")
+            return redirect(url_for("suppliers_list"))
+        if request.method == "POST":
+            name = request.form.get("name", "")
+            contact = request.form.get("contact", "")
+            phone = request.form.get("phone", "")
+            status = request.form.get("status", "合作中")
+            result = material_supplier_service.update_supplier(supplier_id, name, contact, phone, status)
+            if result.get("success"):
+                flash("供应商已更新", "success")
+                return redirect(url_for("suppliers_list"))
+            flash(result.get("message", "更新失败"), "error")
+        return render_template("suppliers/edit.html", supplier=supplier)
+
+    @app.route("/suppliers/<int:supplier_id>/status", methods=["POST"])
+    @login_required
+    @roles_required({"管理员", "采购"})
+    def supplier_update_status(supplier_id: int):
+        new_status = request.form.get("status", "").strip()
+        res = material_supplier_service.update_supplier_status(supplier_id, new_status)
+        flash(res.get("message", "更新失败"), "success" if res.get("success") else "error")
+        return redirect(url_for("suppliers_list"))
 
     @app.route("/materials/<int:material_id>/suppliers", methods=["GET", "POST"])
     @login_required
@@ -520,6 +636,7 @@ def create_app() -> Flask:
         status = request.args.get("status") or None
         position = request.args.get("position") or None
         name_kw = request.args.get("name") or None
+        sort = request.args.get("sort") or None
 
         result = employee_service.list_employees_page(page=page, page_size=page_size, status=status, position=position, name=name_kw)
         if not result.get("success"):
@@ -528,16 +645,23 @@ def create_app() -> Flask:
         else:
             page_data = result.get("data", {"items": [], "total": 0, "page": page, "page_size": page_size})
 
+        items = page_data.get("items", [])
+        if sort == "id_desc":
+            items = sorted(items, key=lambda x: x.get("员工id", 0), reverse=True)
+        elif sort == "id_asc":
+            items = sorted(items, key=lambda x: x.get("员工id", 0))
+        page_data["items"] = items
+
         total = int(page_data.get("total", 0))
         page = int(page_data.get("page", 1))
         page_size = int(page_data.get("page_size", 10))
         total_pages = (total + page_size - 1) // page_size if page_size > 0 else 0
 
-        return render_template("employees/list.html", page_data=page_data, status=status, position=position, name=name_kw, positions=POSITIONS, total_pages=total_pages)
+        return render_template("employees/list.html", page_data=page_data, status=status, position=position, name=name_kw, positions=POSITIONS, total_pages=total_pages, sort=sort)
 
     @app.route("/employees/new", methods=["GET", "POST"])
     @login_required
-    @admin_required
+    @roles_required({"管理员", "人事"})
     def employees_new():
         # WTForms 路径
         if NewEmployeeForm is not None:
@@ -555,7 +679,7 @@ def create_app() -> Flask:
                     return redirect(url_for('employees_list'))
                 else:
                     flash(result.get('message', '创建失败'), 'error')
-            return render_template('employees/new.html', form=form)
+            return render_template('employees/new.html', form=form, positions=POSITIONS)
 
         # 回退路径
         if request.method == 'POST':
@@ -571,11 +695,11 @@ def create_app() -> Flask:
                 return redirect(url_for('employees_list'))
             else:
                 flash(result.get('message', '创建失败'), 'error')
-        return render_template('employees/new.html', form=None)
+        return render_template('employees/new.html', form=None, positions=POSITIONS)
 
     @app.route("/employees/<int:employee_id>/edit", methods=["GET", "POST"])
     @login_required
-    @admin_required
+    @roles_required({"管理员", "人事"})
     def employees_edit(employee_id: int):
         # 先获取员工信息
         info = employee_service.get_employee(employee_id)
@@ -621,7 +745,7 @@ def create_app() -> Flask:
 
     @app.route("/employees/<int:employee_id>/account", methods=["GET", "POST"])
     @login_required
-    @admin_required
+    @roles_required({"管理员", "人事"})
     def employees_account(employee_id: int):
         """
         管理员给员工设置初始账号和密码，或重置账号密码。
@@ -648,21 +772,9 @@ def create_app() -> Flask:
         suggested_username = (employee.get('员工姓名') or '').strip()
         return render_template("employees/account.html", employee=employee, suggested_username=suggested_username)
 
-    @app.route("/employees/<int:employee_id>/delete", methods=["POST"])
-    @login_required
-    @admin_required
-    def employees_delete(employee_id: int):
-        result = employee_service.delete_employee(employee_id)
-        if result.get('success'):
-            flash('员工已删除', 'success')
-        else:
-            flash(result.get('message', '删除失败'), 'error')
-        return redirect(url_for('employees_list'))
-
     # ========== 采购管理 ==========
     @app.route("/purchases", methods=["GET"])
     @login_required
-    @roles_required({"管理员", "采购"})
     def purchases_list():
         try:
             page = int(request.args.get("page", 1))
@@ -671,6 +783,15 @@ def create_app() -> Flask:
             page, page_size = 1, 10
         status = request.args.get("status") or None
         task_id = request.args.get("task_id") or None
+        sort = request.args.get("sort") or None
+        # 操作员下拉：管理员/采购
+        try:
+            emp_res = employee_service.list_employees_page(page=1, page_size=500, status="在职")
+            emps_raw = emp_res.get("data", {}).get("items", []) if emp_res.get("success") else []
+        except Exception:
+            emps_raw = []
+        allowed_positions = {"管理员", "采购"}
+        employees = [e for e in emps_raw if e.get("职位") in allowed_positions]
         task_id_int = int(task_id) if task_id else None
         result = purchase_service.list_purchases_page(page=page, page_size=page_size, status=status, task_id=task_id_int)
         if not result.get("success"):
@@ -678,11 +799,17 @@ def create_app() -> Flask:
             page_data = {"items": [], "total": 0, "page": page, "page_size": page_size}
         else:
             page_data = result.get("data", {"items": [], "total": 0, "page": page, "page_size": page_size})
+        items = page_data.get("items", [])
+        if sort == "id_desc":
+            items = sorted(items, key=lambda x: x.get("采购记录id", 0), reverse=True)
+        elif sort == "id_asc":
+            items = sorted(items, key=lambda x: x.get("采购记录id", 0))
+        page_data["items"] = items
         total = int(page_data.get("total", 0))
         page = int(page_data.get("page", 1))
         page_size = int(page_data.get("page_size", 10))
         total_pages = (total + page_size - 1) // page_size if page_size > 0 else 0
-        return render_template("purchases/list.html", page_data=page_data, status=status, task_id=task_id, total_pages=total_pages)
+        return render_template("purchases/list.html", page_data=page_data, status=status, task_id=task_id, total_pages=total_pages, sort=sort, employees=employees)
 
     @app.route("/purchases/new", methods=["GET", "POST"])
     @login_required
@@ -705,11 +832,52 @@ def create_app() -> Flask:
                 return redirect(url_for("purchases_list"))
             else:
                 flash(result.get("message", "创建失败"), "error")
-                return redirect(url_for("purchases_new"))
+                # 回填
+                links_res = purchase_service.list_all_links()
+                links = links_res.get("data", {}).get("items", []) if links_res.get("success") else []
+                tasks = purchase_service.task_dao.get_all(order_by="印刷任务id DESC")
+                tasks = [t for t in tasks if t.get("任务状态") != "已取消"] if tasks else []
+                return render_template("purchases/new.html", links=links, tasks=tasks)
         # GET: 获取材料-供应商关联用于选择
         links_res = purchase_service.list_all_links()
         links = links_res.get("data", {}).get("items", []) if links_res.get("success") else []
-        return render_template("purchases/new.html", links=links)
+        tasks = purchase_service.task_dao.get_all(order_by="印刷任务id DESC")
+        tasks = [t for t in tasks if t.get("任务状态") != "已取消"] if tasks else []
+        return render_template("purchases/new.html", links=links, tasks=tasks)
+
+    @app.route("/api/requirement", methods=["GET"])
+    @login_required
+    def api_requirement():
+        """
+        返回指定任务+材料关联的需求数量，用于前端参考。
+        请求参数：task_id, link_id
+        返回：{success, required_qty}
+        """
+        try:
+            task_id = int(request.args.get("task_id", "0"))
+            link_id = int(request.args.get("link_id", "0"))
+        except Exception:
+            return {"success": False, "message": "参数格式错误"}
+        if task_id <= 0 or link_id <= 0:
+            return {"success": False, "message": "参数缺失"}
+        # 获取材料id
+        try:
+            from src.database.daos import 材料供应商关联DAO
+            link = 材料供应商关联DAO().get_by_id(link_id)
+        except Exception:
+            link = None
+        material_id = int(link.get("材料id")) if link else None
+        if not material_id:
+            return {"success": False, "message": "关联不存在或材料缺失"}
+        res = printing_service.get_task_requirements(task_id)
+        if not res.get("success"):
+            return {"success": False, "message": res.get("message", "获取任务需求失败")}
+        required = 0.0
+        for it in res.get("data", {}).get("items", []):
+            if int(it.get("material_id") or 0) == material_id:
+                required = float(it.get("required_qty") or 0)
+                break
+        return {"success": True, "required_qty": required}
 
     @app.route("/purchases/<int:purchase_id>/status", methods=["POST"])
     @login_required
