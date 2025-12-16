@@ -130,6 +130,20 @@ class InventoryService(BaseService):
         except Exception as e:
             return self._create_error_response(f"获取库存日志失败: {str(e)}")
 
+    def query_stock_logs(self, material_id: Optional[int] = None, reference_kw: Optional[str] = None,
+                         days: int = 30, limit: int = 500) -> Dict[str, Any]:
+        """库存变动历史查询（支持材料、关联关键字、时间范围）"""
+        try:
+            days = int(days or 30)
+            if days <= 0:
+                days = 30
+            limit = max(1, min(int(limit or 500), 1000))
+            mid = int(material_id) if material_id else None
+            logs = self.stock_log_dao.search_logs(material_id=mid, reference_kw=reference_kw, days=days, limit=limit)
+            return self._create_success_response(data={"items": logs})
+        except Exception as e:
+            return self._create_error_response(f"查询库存日志失败: {str(e)}")
+
     def update_stock_level(self, material_id: int, change_quantity: float, 
                          change_type: str, reference_id: str, operator_id: int,
                          note: str = "") -> Dict[str, Any]:

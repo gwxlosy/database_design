@@ -61,11 +61,13 @@ class PrintingTaskService(BaseService):
         except Exception as e:
             return self._create_error_response(f"获取任务需求失败: {str(e)}")
 
-    def complete_task_manual(self, task_id: int, operator_id: int, completed_date: Optional[str] = None) -> Dict[str, Any]:
+    def complete_task_manual(self, task_id: int, operator_id: int, completed_date: Optional[str] = None,
+                             actual_usage: Optional[Dict[int, float]] = None) -> Dict[str, Any]:
         """员工手动点击完成任务：
         - 校验任务存在且未取消
         - 计算材料需求，若库存充足则逐项出库，并将任务状态置为已完成，写入完成日期
         - 若库存不足，返回短缺清单
+        - 支持传入 actual_usage 覆盖实际消耗；未传则使用系统计算的理论用量
         """
         try:
             task = self.task_dao.get_by_id(task_id)
@@ -99,9 +101,30 @@ class PrintingTaskService(BaseService):
                 }
                 required = self._calculate_material_requirements(ctx)
 
+            # 覆盖实际消耗（若提供）
+            actual_map: Dict[int, float] = {}
+            if actual_usage:
+                for k, v in actual_usage.items():
+                    try:
+                        fval = float(v)
+                    except Exception:
+                        return self._create_error_response("实际消耗格式错误")
+                    if fval < 0:
+                        return self._create_error_response("实际消耗不能为负数")
+                    actual_map[int(k)] = fval
+
+            # 最终扣减用量：优先实际值，其次理论值
+            consumptions: Dict[int, float] = {}
+            for mid, rqty in required.items():
+                consumptions[int(mid)] = float(actual_map.get(int(mid), float(rqty)))
+            # 如果实际消耗里包含额外材料，也允许扣减
+            for mid, val in actual_map.items():
+                if mid not in consumptions:
+                    consumptions[mid] = float(val)
+
             # 先校验库存是否充足
             shortages: List[Dict[str, Any]] = []
-            for mid, rqty in required.items():
+            for mid, rqty in consumptions.items():
                 mat = self.material_dao.get_by_id(int(mid)) or {}
                 stock = float(mat.get('库存数量') or 0)
                 if stock < float(rqty):
@@ -120,7 +143,7 @@ class PrintingTaskService(BaseService):
             inv = InventoryService()
             ref = f"task:{task_id}"
             changes = []
-            for mid, rqty in required.items():
+            for mid, rqty in consumptions.items():
                 delta = -float(rqty)
                 if delta == 0:
                     continue

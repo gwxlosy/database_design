@@ -42,55 +42,61 @@
       <p><strong>当前状态：</strong>{{ task['任务状态'] }}</p>
     </section>
 
-    <section class="card">
-      <h2>材料需求与库存对比</h2>
-      {% if items and items|length > 0 %}
-        <table class="table">
-          <thead>
-            <tr>
-              <th>材料ID</th>
-              <th>材料名称</th>
-              <th>需求数量</th>
-              <th>当前库存</th>
-              <th>短缺数量</th>
-            </tr>
-          </thead>
-          <tbody>
-          {% set has_shortage = false %}
-          {% for it in items %}
-            {% if it.shortage and it.shortage > 0 %}{% set has_shortage = true %}{% endif %}
-            <tr>
-              <td>{{ it.material_id }}</td>
-              <td>{{ it.material_name }}</td>
-              <td>{{ it.required_qty }}</td>
-              <td>{{ it.current_stock }}</td>
-              <td>{% if it.shortage and it.shortage > 0 %}<span style="color:#e74c3c;">{{ it.shortage }}</span>{% else %}0{% endif %}</td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
+      <section class="card">
+        <h2>材料需求与库存对比</h2>
+        {% if items and items|length > 0 %}
+        {% set can_complete = is_print_operator and task['任务状态'] != '已完成' and task['任务状态'] != '已取消' %}
+        <form method="post" action="{{ url_for('task_complete_manual', task_id=task['印刷任务id']) }}" class="form" style="margin:0; padding:0;">
+          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+          <table class="table">
+            <thead>
+              <tr>
+                <th>材料ID</th>
+                <th>材料名称</th>
+                <th>需求数量</th>
+                <th>当前库存</th>
+                <th>短缺数量</th>
+                {% if can_complete %}<th>实际消耗（可修改）</th>{% endif %}
+              </tr>
+            </thead>
+            <tbody>
+            {% set has_shortage = false %}
+            {% for it in items %}
+              {% if it.shortage and it.shortage > 0 %}{% set has_shortage = true %}{% endif %}
+              <tr>
+                <td>{{ it.material_id }}</td>
+                <td>{{ it.material_name }}</td>
+                <td>{{ it.required_qty }}</td>
+                <td>{{ it.current_stock }}</td>
+                <td>{% if it.shortage and it.shortage > 0 %}<span style="color:#e74c3c;">{{ it.shortage }}</span>{% else %}0{% endif %}</td>
+                {% if can_complete %}
+                <td>
+                  <input type="number" step="0.001" min="0" name="actual_qty_{{ it.material_id }}" value="{{ it.required_qty }}" style="width:140px;">
+                </td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
 
-        {% if is_print_operator and task['任务状态'] != '已完成' and task['任务状态'] != '已取消' %}
-          <div class="card" style="margin-top:12px;">
-            <h3>完成任务</h3>
-            {% if has_shortage %}
-              <div class="alert warning">库存不足，无法完成任务。请先补足短缺材料再尝试完成。</div>
-            {% else %}
-              <form method="post" action="{{ url_for('task_complete_manual', task_id=task['印刷任务id']) }}" class="form" style="max-width:600px;">
-                {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
-                <div class="form-group">
-                  <label>完成日期：</label>
-                  <input type="date" name="completed_date" value="{{ default_completed_date }}" />
-                </div>
-                <div class="form-group">
-                  <label>操作员工ID（可选）：</label>
-                  <input type="number" name="operator_employee_id" placeholder="不填则使用当前用户名映射的员工ID">
-                </div>
-                <button class="btn primary" type="submit">确认完成并扣减库存</button>
-              </form>
-            {% endif %}
-          </div>
-        {% endif %}
+          {% if can_complete %}
+            <div class="card" style="margin-top:12px;">
+              <h3>完成任务</h3>
+              {% if has_shortage %}
+                <div class="alert warning">当前理论计算存在短缺，可通过调整实际消耗或先补货后再提交。</div>
+              {% endif %}
+              <div class="form-group">
+                <label>完成日期：</label>
+                <input type="date" name="completed_date" value="{{ default_completed_date }}" />
+              </div>
+              <div class="form-group">
+                <label>操作员工ID（可选）：</label>
+                <input type="number" name="operator_employee_id" placeholder="不填则使用当前用户名映射的员工ID">
+              </div>
+              <button class="btn primary" type="submit">确认完成并扣减库存</button>
+            </div>
+          {% endif %}
+        </form>
       {% else %}
         <p>无材料需求。</p>
       {% endif %}

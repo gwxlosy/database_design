@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>库存变动历史</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+<header class="navbar">
+    <div class="navbar-brand">印刷出版商数据库管理系统</div>
+    <nav class="navbar-links">
+        <a href="{{ url_for('index') }}">首页</a>
+        <a href="{{ url_for('inventory_overview') }}">库存总览</a>
+        <a href="{{ url_for('inventory_materials') }}">材料列表</a>
+        <a href="{{ url_for('inventory_logs') }}">库存日志</a>
+    </nav>
+</header>
+
+<main class="container">
+    <div class="page-header">
+        <h1>库存变动历史</h1>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="messages">
+          {% for category, message in messages %}
+            <div class="alert {{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <form method="get" class="form" style="display:flex; gap:12px; flex-wrap: wrap; align-items:flex-end;">
+        <div>
+            <label>材料ID：</label>
+            <input type="number" name="material_id" value="{{ material_id or '' }}" placeholder="全部">
+        </div>
+        <div>
+            <label>关联标识包含：</label>
+            <input type="text" name="reference" value="{{ reference or '' }}" placeholder="如 task:1 / purchase:2">
+        </div>
+        <div>
+            <label>时间范围（天）：</label>
+            <input type="number" name="days" value="{{ days or 30 }}" min="1" max="365">
+        </div>
+        <div>
+            <label>最大条数：</label>
+            <input type="number" name="limit" value="{{ limit or 200 }}" min="1" max="1000">
+        </div>
+        <button class="btn" type="submit">查询</button>
+    </form>
+
+    {% if items and items|length > 0 %}
+    <table class="table" style="margin-top:12px;">
+        <thead>
+            <tr>
+                <th>时间</th>
+                <th>材料ID</th>
+                <th>材料名称</th>
+                <th>变动数量</th>
+                <th>类型</th>
+                <th>关联业务</th>
+                <th>操作人</th>
+                <th>备注</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in items %}
+            <tr>
+                <td>{{ log.get('变动时间') }}</td>
+                <td>{{ log.get('材料id') }}</td>
+                <td>{{ log.get('材料名称') }}</td>
+                <td>{{ log.get('库存变动数量') }}</td>
+                <td>{{ log.get('变动类型') }}</td>
+                <td>{{ log.get('关联的业务记录标识') }}</td>
+                <td>{{ log.get('操作人姓名') or log.get('操作人') }}</td>
+                <td>{{ log.get('备注') or '-' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="margin-top:12px;">暂无日志记录。</p>
+    {% endif %}
+</main>
+</body>
+</html>
+

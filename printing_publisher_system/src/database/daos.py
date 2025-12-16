@@ -516,6 +516,35 @@ class 库存日志DAO(BaseDAO):
             cursor.execute(query, (days,))
             return cursor.fetchall()
 
+    def search_logs(self, material_id: Optional[int] = None, reference_kw: Optional[str] = None,
+                   days: int = 30, limit: int = 500) -> List[Dict[str, Any]]:
+        """按条件查询库存日志（支持材料、关联业务、时间范围）"""
+        where_clause = ["1=1"]
+        params: List[Any] = []
+        if material_id:
+            where_clause.append("sl.材料id = %s")
+            params.append(material_id)
+        if reference_kw:
+            where_clause.append("sl.关联的业务记录标识 LIKE %s")
+            params.append(f"%{reference_kw}%")
+        if days and days > 0:
+            where_clause.append("sl.变动时间 >= DATE_SUB(NOW(), INTERVAL %s DAY)")
+            params.append(days)
+        where_sql = " AND ".join(where_clause)
+        query = f"""
+            SELECT sl.*, m.材料名称, e.员工姓名 as 操作人姓名
+            FROM 库存日志表 sl
+            JOIN 材料表 m ON sl.材料id = m.材料id
+            LEFT JOIN 员工表 e ON sl.操作人 = e.员工id
+            WHERE {where_sql}
+            ORDER BY sl.变动时间 DESC, sl.库存日志id DESC
+            LIMIT %s
+        """
+        params.append(limit)
+        with self.db.get_cursor() as cursor:
+            cursor.execute(query, params)
+            return cursor.fetchall()
+
 # DAO工厂类，方便管理所有DAO实例
 class DAOFactory:
     """

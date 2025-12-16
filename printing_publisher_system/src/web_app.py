@@ -358,7 +358,9 @@ def create_app() -> Flask:
         if not res_ctx.get("success"):
             flash(res_ctx.get("message", "获取任务失败"), "error")
             return redirect(url_for("list_tasks"))
-        task = (res_ctx.get("data") or {}).get("task") or {}
+        data_ctx = res_ctx.get("data") or {}
+        task = data_ctx.get("task") or {}
+        items_ctx = data_ctx.get("items", []) or []
         allow = is_print_operator()
         if not allow:
             op_emp = None
@@ -374,6 +376,29 @@ def create_app() -> Flask:
         if not allow:
             flash("您没有权限完成该任务", "error")
             return redirect(url_for("task_requirements", task_id=task_id))
+
+        # 解析实际消耗（可选），若填写则用实际值扣减
+        actual_usage: Dict[int, float] = {}
+        for it in items_ctx:
+            try:
+                mid = int(it.get("material_id") or 0)
+            except Exception:
+                continue
+            if mid <= 0:
+                continue
+            field = f"actual_qty_{mid}"
+            raw_val = request.form.get(field)
+            if raw_val is None or raw_val == "":
+                continue
+            try:
+                val = float(raw_val)
+            except Exception:
+                flash("实际消耗格式错误，请输入数字", "error")
+                return redirect(url_for("task_requirements", task_id=task_id))
+            if val < 0:
+                flash("实际消耗不能为负数", "error")
+                return redirect(url_for("task_requirements", task_id=task_id))
+            actual_usage[mid] = val
 
         # 操作人优先取表单，其次按当前用户名在员工表匹配
         operator_id_raw = request.form.get("operator_employee_id")
@@ -397,7 +422,9 @@ def create_app() -> Flask:
             flash("无法确定操作人，请填写操作员工ID或创建与用户名同名的员工记录", "error")
             return redirect(url_for("task_requirements", task_id=task_id))
         completed_date = request.form.get("completed_date") or None
-        res = printing_service.complete_task_manual(task_id, operator_id=int(operator_id), completed_date=completed_date)
+        res = printing_service.complete_task_manual(task_id, operator_id=int(operator_id),
+                                                    completed_date=completed_date,
+                                                    actual_usage=actual_usage or None)
         if not res.get("success"):
             # 若库存不足，跳回需求页查看缺口
             flash(res.get("message", "任务完成失败"), "error")
@@ -966,6 +993,34 @@ def create_app() -> Flask:
         result = inventory_service.list_materials(name_kw=name_kw)
         items = result.get("data", {}).get("items", []) if result.get("success") else []
         return render_template("inventory/materials.html", items=items, name=name_kw)
+
+    @app.route("/inventory/logs", methods=["GET"])
+    @login_required
+    def inventory_logs():
+        """库存变动历史查询页面"""
+        material_id_raw = request.args.get("material_id") or None
+        reference_kw = request.args.get("reference") or None
+        days_raw = request.args.get("days") or 30
+        limit_raw = request.args.get("limit") or 200
+        try:
+            material_id = int(material_id_raw) if material_id_raw else None
+        except Exception:
+            material_id = None
+        try:
+            days = int(days_raw)
+        except Exception:
+            days = 30
+        try:
+            limit = int(limit_raw)
+        except Exception:
+            limit = 200
+        res = inventory_service.query_stock_logs(material_id=material_id, reference_kw=reference_kw, days=days, limit=limit)
+        if not res.get("success"):
+            flash(res.get("message", "查询库存日志失败"), "error")
+            items: list[dict[str, Any]] = []
+        else:
+            items = res.get("data", {}).get("items", [])
+        return render_template("inventory/logs.html", items=items, material_id=material_id_raw, reference=reference_kw, days=days, limit=limit)
 
     def _resolve_operator_id() -> Optional[int]:
         op: Optional[int] = None
